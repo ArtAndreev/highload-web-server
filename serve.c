@@ -1,48 +1,77 @@
 #include "serve.h"
 
 #include <arpa/inet.h>
-#include <netinet/in.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #define MAX_QUEUE_LEN 1024
 
-int listen_and_serve(unsigned int addr, unsigned short port, void (*handler)(int)) {
-    int sockfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sockfd < 0) {
-        perror("Socket error");
-        return SOCKET_ERROR;
+int serve_server_multithreaded_accept(serve_server *server) {
+    long num_CPU = sysconf(_SC_NPROCESSORS_ONLN);
+    if (num_CPU < 0) {
+        perror("Cannot get number of CPU");
+        return SYSCONF_ERROR;
     }
 
-    struct sockaddr_in name = {
-        .sin_family = AF_INET,
-        .sin_port = htons(port),
-        .sin_addr.s_addr = htonl(addr),
-    };
-    if (bind(sockfd, (struct sockaddr *)&name, sizeof(struct sockaddr_in)) < 0) {
-        perror("Bind error");
-        return BIND_ERROR;
+    server->_workers = malloc(num_CPU * sizeof(pthread_t));
+    if (server->_workers == NULL) {
+        perror("Malloc error");
+        return MEMORY_ERROR;
+    }
+    for (int i = 0; i < num_CPU; i++) {
+        pthread_create(&server->_workers[i], NULL, (void *)_serve_server_accept_worker, server);
     }
 
-    if (listen(sockfd, MAX_QUEUE_LEN) < 0) {
-        perror("Listen error");
-        return LISTEN_ERROR;
+    printf("Accepting connections at %s:%hu\n", inet_ntoa(server->name.sin_addr), ntohs(server->name.sin_port));
+    for (int i = 0; i < num_CPU; i++) {
+        pthread_join(server->_workers[i], NULL);
     }
 
+    return 0;
+}
+
+void *_serve_server_accept_worker(const serve_server *server) {
     struct sockaddr_in client;
     unsigned int addrlen = sizeof(struct sockaddr_in);
     while (1) {
-        int clientfd = accept(sockfd, (struct sockaddr *)&client, &addrlen);
+        int clientfd = accept(server->sockfd, (struct sockaddr *)&client, &addrlen);
         if (clientfd < 0) {
             perror("Accept error");
             continue;
         }
-        printf("Accepted client: %s:%u\n", inet_ntoa(client.sin_addr), client.sin_port);
+        printf("Accepted client: %s:%hu\n", inet_ntoa(client.sin_addr), client.sin_port);
 
-        handler(clientfd);
+        server->_handler(clientfd);
 
         close(clientfd);
     }
+}
+
+int listen_and_serve(unsigned int addr, unsigned short port, void (*handler)(int)) {
+    serve_server server = { ._handler = handler };
+    server.sockfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server.sockfd < 0) {
+        perror("Socket error");
+        return SOCKET_ERROR;
+    }
+
+    server.name = (struct sockaddr_in){
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr.s_addr = htonl(addr),
+    };
+    if (bind(server.sockfd, (struct sockaddr *)&server.name, sizeof(struct sockaddr_in)) < 0) {
+        perror("Bind error");
+        return BIND_ERROR;
+    }
+
+    if (listen(server.sockfd, MAX_QUEUE_LEN) < 0) {
+        perror("Listen error");
+        return LISTEN_ERROR;
+    }
+
+    return serve_server_multithreaded_accept(&server);
 }
