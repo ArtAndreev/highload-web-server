@@ -6,6 +6,7 @@
 
 enum serve_result {
     MEMORY_ERROR = 1,
+    PTHREAD_ERROR,
     SOCKET_ERROR,
     BIND_ERROR,
     LISTEN_ERROR,

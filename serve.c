@@ -22,14 +22,21 @@ int serve_server_multithreaded_accept(serve_server *server) {
         return MEMORY_ERROR;
     }
     for (int i = 0; i < num_CPU; i++) {
-        pthread_create(&server->_workers[i], NULL, (void *)_serve_server_accept_worker, server);
+        if (pthread_create(&server->_workers[i], NULL, (void *)_serve_server_accept_worker, server) != 0) {
+            perror("Pthread creation error");
+            return PTHREAD_ERROR;
+        }
     }
 
     printf("Accepting connections at %s:%hu\n", inet_ntoa(server->name.sin_addr), ntohs(server->name.sin_port));
     for (int i = 0; i < num_CPU; i++) {
-        pthread_join(server->_workers[i], NULL);
+        if (pthread_join(server->_workers[i], NULL) != 0) {
+            perror("Pthread joining error");
+            return PTHREAD_ERROR;
+        }
     }
 
+    free(server->_workers);
     return 0;
 }
 
