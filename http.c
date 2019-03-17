@@ -1,5 +1,5 @@
 #include "http.h"
 
-void http_handler(int clientfd) {
+void http_handler(char *response, char *request) {
 
 }
