@@ -56,7 +56,6 @@ int listen_and_serve_http(const serve_config *cfg) {
     assert(cfg != NULL);
     assert(cfg->static_root != NULL);
 
-    event_enable_debug_mode();
     evthread_use_pthreads();
 
     server server;
