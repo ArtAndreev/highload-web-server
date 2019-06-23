@@ -1,33 +1,44 @@
+#include "config.h"
 #include "serve.h"
 
+#include <errno.h>
+#include <getopt.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#define MAX_PORT_NUMBER 65535
+#include <string.h>
 
 void print_usage() {
-    fprintf(stderr, "Usage:\n./server port\nport: [0 - %u]", MAX_PORT_NUMBER);
+    fprintf(stderr, "Usage:\n./server -c /path/to/config\n");
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        print_usage();
-        return 1;
+    int opt;
+    char *cfg_location = NULL;
+    while ((opt = getopt(argc, argv, "c:")) != -1)
+    {
+        if (opt == 'c') {
+            if ((cfg_location = strdup(optarg)) == NULL) {
+                fprintf(stderr, "Cannot init config path string: %s\n", strerror(errno));
+                return 1;
+            }
+        } else {
+            print_usage();
+            return 1;
+        }
     }
-    long port = strtol(argv[1], NULL, 10);
-    if (port < 0 || port > MAX_PORT_NUMBER) {
-        fprintf(stderr, "Error: wrong port: %s\n", argv[1]);
+    if (cfg_location == NULL) {
         print_usage();
         return 1;
     }
 
-    serve_config cfg = {
-        .addr = INADDR_ANY,
-        .port = (unsigned short)port,
-        .worker_num = 0,
+    serve_config *cfg = parse_serve_config(cfg_location);
+    if (cfg == NULL) {
+        return 1;
+    }
+    cfg->addr = INADDR_ANY;
 
-        .static_root = "/var/www/html",
-    };
-    return listen_and_serve_http(&cfg);
+    int r = listen_and_serve_http(cfg);
+    free(cfg);
+    return r;
 }
