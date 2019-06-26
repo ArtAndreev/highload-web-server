@@ -3,6 +3,7 @@
 Dockerfile
 .dockerignore
 
+LICENSE
 README.md
 
 bin/
